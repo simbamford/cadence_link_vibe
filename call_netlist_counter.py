@@ -9,7 +9,7 @@ from pathlib import Path
 from netlist_leaf_counter import netlist_leaf_counter
 
 result = netlist_leaf_counter(
-    netlist_path=Path("C:/Dropbox/Work/IIT/Research/AER snowball/snbl5_netlist.vams"),
+    netlist_paths=Path("C:/Dropbox/Work/IIT/Research/AER snowball/snbl5_netlist.vams"),
     top="snbl_encoder",
     dump_leaves=True           # True -> prints the breakdown
     )
@@ -17,7 +17,7 @@ result = netlist_leaf_counter(
 
 #%%
 result = netlist_leaf_counter(
-    netlist_path=Path("example_netlists/snbl5_netlist.vams"),
+    netlist_paths=Path("example_netlists/snbl5_netlist.vams"),
     top="snbl_encoder",
     dump_leaves=True           # True -> prints the breakdown
     )
@@ -25,7 +25,10 @@ result = netlist_leaf_counter(
 
 #%%
 result = netlist_leaf_counter(
-    netlist_path=Path("example_netlists/paer_5_of_10.vams"),
+    netlist_paths=[
+        Path("example_netlists/paer_5_of_10.vams"),
+        Path("example_netlists/snbl5_netlist.vams"),
+    ],
     top="paer_5_of_10",
     list_tops=True,           # True -> prints only the inferred tops
     dump_leaves=True           # True -> prints the breakdown
