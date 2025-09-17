@@ -10,6 +10,7 @@ definition in the given netlist file.
 HOW TO RUN (Linux/macOS shell)
 -------------------------------------------------------------------------------
 python3 netlist_leaf_counter.py /path/to/netlist.vams
+python3 netlist_leaf_counter.py /path/to/netlist1.vams /path/to/netlist2.vams
 python3 netlist_leaf_counter.py /path/to/netlist.vams -t TOP_MODULE
 python3 netlist_leaf_counter.py /path/to/netlist.vams --list-tops
 python3 netlist_leaf_counter.py /path/to/netlist.vams --dump-leaves
@@ -21,7 +22,10 @@ from pathlib import Path
 from netlist_leaf_counter import netlist_leaf_counter
 
 result = netlist_leaf_counter(
-    netlist_path=Path("/path/to/netlist.vams"),
+    netlist_paths=[
+        Path("/path/to/netlist1.vams"),
+        Path("/path/to/netlist2.vams"),
+    ],
     top="TOP_MODULE",          # or None to auto-infer tops
     list_tops=False,           # True -> prints only the inferred tops
     dump_leaves=True           # True -> prints breakdown by leaf type
@@ -34,8 +38,9 @@ result = netlist_leaf_counter(
 
 import argparse
 import re
+from os import PathLike
 from pathlib import Path
-from typing import Dict, List, Tuple, Set, Optional
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 # Keywords that imply a statement head is not an instantiation
 RESERVED_HEAD = {
@@ -317,11 +322,35 @@ def count_leaves(module_insts, module_names, start_modules: List[str]):
     return dict(leaf_counts)
 
 
-def netlist_leaf_counter(netlist_path: Path, top: Optional[str] = None,
+def _normalize_netlist_paths(
+    netlist_paths: Union[Path, str, PathLike, Iterable[Union[Path, str, PathLike]]]
+) -> List[Path]:
+    """Return a list of Path objects given a single path or an iterable of paths."""
+
+    single_types = (str, bytes, PathLike, Path)
+    if isinstance(netlist_paths, single_types):
+        paths = [Path(netlist_paths)]
+    else:
+        try:
+            paths = [Path(p) for p in netlist_paths]  # type: ignore[arg-type]
+        except TypeError as exc:
+            raise TypeError(
+                "netlist_paths must be a path or an iterable of paths"
+            ) from exc
+
+    if not paths:
+        raise ValueError("At least one netlist path must be provided")
+
+    return paths
+
+
+def netlist_leaf_counter(netlist_paths: Union[Path, str, PathLike, Iterable[Union[Path, str, PathLike]]],
+                         top: Optional[str] = None,
                          list_tops: bool = False, dump_leaves: bool = False):
     """
-    Programmatic API: analyze a netlist and return a dict with tops, total, breakdown.
-    - netlist_path: Path to .v/.vams file
+    Programmatic API: analyze one or more netlists and return a dict with tops,
+    total, and a breakdown.
+    - netlist_paths: Path or iterable of Paths to .v/.vams files
     - top: optional top module name; if None, inferred (roots)
     - list_tops: if True, prints inferred tops
     - dump_leaves: if True, prints leaf-type breakdown
@@ -333,8 +362,14 @@ def netlist_leaf_counter(netlist_path: Path, top: Optional[str] = None,
           "breakdown": { <leaf_type>: <count>, ... }
         }
     """
-    text = netlist_path.read_text(encoding="utf-8", errors="ignore")
-    module_names, module_insts, _used_types = parse_netlist(text)
+    paths = _normalize_netlist_paths(netlist_paths)
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Netlist file not found: {path}")
+    combined_text = "\n".join(
+        p.read_text(encoding="utf-8", errors="ignore") for p in paths
+    )
+    module_names, module_insts, _used_types = parse_netlist(combined_text)
 
     roots = find_roots(module_names, module_insts)
     if top:
@@ -375,7 +410,12 @@ def main():
     ap = argparse.ArgumentParser(
         description="Count leaf devices (types without module definitions) in a hierarchical Verilog/VAMS netlist."
     )
-    ap.add_argument("netlist", type=Path, help="Path to netlist (.v/.vams)")
+    ap.add_argument(
+        "netlists",
+        type=Path,
+        nargs="+",
+        help="One or more netlist files (.v/.vams) to analyze together.",
+    )
     ap.add_argument(
         "-t", "--top",
         help="Top module name (optional). If omitted, inferred as modules not instantiated by others."
@@ -385,7 +425,7 @@ def main():
     args = ap.parse_args()
 
     result = netlist_leaf_counter(
-        netlist_path=args.netlist,
+        netlist_paths=args.netlists,
         top=args.top,
         list_tops=args.list_tops,
         dump_leaves=args.dump_leaves,
